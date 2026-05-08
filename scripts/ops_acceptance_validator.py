@@ -49,7 +49,6 @@ STANDARD_SET = set(STANDARD_SUBSYSTEMS)
 PLATFORM_GENERIC_TERMS = {
     "平台",
     "平台系统",
-    "平台子系统",
     "大数据资源平台",
     "数据平台",
     "业务平台",
@@ -77,9 +76,10 @@ PLATFORM_GENERIC_TERMS = {
     "技术中台",
     "中台系统",
     "中台",
-    "月度系统",
-    "月度子系统",
-    "月度平台",
+    "基础服务",
+    "公共服务",
+    "通用服务",
+    "支撑服务",
 }
 
 VENDOR_GROUPS = {
@@ -203,6 +203,24 @@ MONTH_PATTERN = re.compile(r"(?<!\d)(20\d{2})(?:年|[./-])(\d{1,2})月?(?![./-]?
 COUNT_PATTERN = re.compile(
     rf"(?P<num>\d+|[{CN_NUM}]+)\s*(?P<classifier>个|套|台)?\s*(?P<target>子系统|系统|服务器)"
 )
+
+NEGATIVE_PATTERNS = [
+    re.compile(r".{0,10}(?:进行|完成|导致|影响|涉及|保障|提升|确保|针对|关于)[的]?(?:各|该)?系统$"),
+    re.compile(r".{0,5}(?:进行|完成|执行|处理|分析|监控|管理|运维|保障|支撑|提供)[的]?(?:系统|平台)"),
+    re.compile(r"^.+(?:各|该|这些|那些|多个).+(?:子系统|系统)$"),
+]
+
+GENERIC_PHRASE_PREFIXES = [
+    "各", "该", "这些", "那些", "多个", "相关", "所属", "涉及", "本", "其", "此", "共",
+    "部分", "全部", "所有", "整个", "完整", "月度", "每周", "每日", "每年",
+]
+
+GENERIC_PHRASE_SUFFIXES = [
+    "进行", "完成", "执行", "处理", "分析", "监控", "管理", "运维", "保障",
+    "支撑", "提供", "导致", "影响", "涉及", "针对", "关于", "包括", "属于",
+    "检查", "维护", "提升", "对", "和", "与", "及", "标准化", "确保",
+]
+
 SUBSYSTEM_CANDIDATE_PATTERN = re.compile(
     r"[\u4e00-\u9fa5A-Za-z0-9（）()]{2,24}(?:子系统|系统|平台|门户|驾驶舱)"
 )
@@ -435,27 +453,144 @@ def _is_platform_generic(candidate: str) -> bool:
     return False
 
 
+def _is_generic_phrase(text: str, start: int, end: int) -> bool:
+    """检查上下文是否为泛指或动宾短语等负向场景"""
+    context_before = text[max(0, start - 15):start]
+    context_after = text[end:min(len(text), end + 15)]
+    matched_text = text[start:end]
+
+    for prefix in GENERIC_PHRASE_PREFIXES:
+        if context_before.endswith(prefix):
+            return True
+        if matched_text.startswith(prefix):
+            return True
+        if len(matched_text) > len(prefix) and matched_text[:len(prefix)+1].startswith(prefix):
+            return True
+
+    for suffix in GENERIC_PHRASE_SUFFIXES:
+        if context_after.startswith(suffix):
+            return True
+        if matched_text.endswith(suffix):
+            return True
+
+    if re.search(r"[多各该些那]+(?:子系统|系统)", matched_text):
+        return True
+
+    if re.search(r"(?:部分|全部|所有)[的]?(?:平台|数据|运维|运营|管理)?(?:子系统|系统)", matched_text):
+        return True
+
+    if re.search(r"(?:本|该|此)(?:子系统|系统)", matched_text):
+        return True
+
+    if re.search(r"对[^的是]+(?:子系统|系统)", matched_text):
+        return True
+
+    if re.search(r"[0-9]+个(?:平台|数据|运维|运营|管理)?(?:子系统|系统)", matched_text):
+        return True
+
+    if re.search(r"[（(][^)）]*[)）]?(?:子系统|系统)", matched_text):
+        return True
+
+    if re.search(r"(?:对|和|与|及|包括|涉及|关于|针对)[的]?(?:子系统|系统)$", matched_text):
+        return True
+
+    if matched_text in ("归集子系统", "治理子系统", "标签子系统", "共享子系统", "开发子系统", "资产子系统", "安全子系统", "驾驶舱"):
+        return True
+
+    if re.search(r"(?:可|应|须|需|能|可|应|须|应)[是否]?(?:关闭|启用|配置|设置|禁用|限制|完成|进行|关闭|启用|配置|设置|禁用|限制)?[的]?(?:系统|子系统)", matched_text):
+        return True
+
+    if re.search(r"(?:可|应|须|需|能)[是否]?(?:关闭|启用|配置|设置|禁用|限制|完成|进行)?[的]?(?:系统|子系统)$", matched_text):
+        return True
+
+    if re.search(r"(?:关闭|启用|配置|设置|禁用|限制|完成|进行|执行|处理|检查|维护|提升|整改|按|同一|便于)[的]?(?:系统|子系统)$", matched_text):
+        return True
+
+    if re.search(r"(?:不必要)[的]?(?:系统|子系统)$", matched_text):
+        return True
+
+    if re.search(r"(?:NTFS|文件|文件系|操作|服务|应用|业务|同一|便于)系统", matched_text):
+        return True
+
+    if matched_text in ("操作系统",):
+        return True
+
+    combined = context_before + matched_text + context_after
+    for neg_pattern in NEGATIVE_PATTERNS:
+        if neg_pattern.search(combined):
+            return True
+
+    return False
+
+
+def _is_standalone_subsystem_identifier(text: str, start: int, end: int, candidate: str) -> bool:
+    """检查是否为独立的子系统标识符（而非通用描述）"""
+    if len(candidate) < 4:
+        return False
+
+    if candidate in STANDARD_SET:
+        return True
+
+    context_before = text[max(0, start - 10):start]
+    context_after = text[end:min(len(text), end + 10)]
+
+    if context_before.endswith("通过") or context_before.endswith("在") or context_before.endswith("来自"):
+        return True
+    if context_after.startswith("进行") or context_after.startswith("完成") or context_after.startswith("通过"):
+        return False
+
+    return False
+
+
+def _similarity_score(candidate: str) -> float:
+    """计算候选词与标准子系统名称的相似度"""
+    from difflib import SequenceMatcher
+    best_score = 0.0
+    for name in STANDARD_SUBSYSTEMS:
+        score = SequenceMatcher(None, candidate, name).ratio()
+        if score > best_score:
+            best_score = score
+    return best_score
+
+
 def _check_subsystem_names(item: TextItem) -> list[Suggestion]:
     suggestions: list[Suggestion] = []
-    reported: set[str] = set()
-    for match in SUBSYSTEM_CANDIDATE_PATTERN.finditer(item.text):
+    seen: set[tuple[str, str]] = set()
+
+    text = item.text
+
+    for match in SUBSYSTEM_CANDIDATE_PATTERN.finditer(text):
         matched_text = match.group(0)
         candidate = _trim_candidate(matched_text)
         candidate = re.sub(r"^[0-9]+", "", candidate)
-        if candidate in STANDARD_SET or candidate in reported:
-            continue
+
         if candidate in ("子系统", "系统") and re.search(r"[0-9]+个", matched_text):
             continue
+
+        if candidate in STANDARD_SET:
+            continue
+
         if _is_platform_generic(candidate):
             continue
-        reported.add(candidate)
+
+        start = match.start()
+        end = match.end()
+
+        if _is_generic_phrase(text, start, end):
+            continue
+
+        key = (candidate, item.file_name)
+        if key in seen:
+            continue
+        seen.add(key)
+
         suggestions.append(
             Suggestion(
                 item.file_name,
                 candidate,
                 "不是标准名称，建议核实是否为标准名称的偏差表述。",
                 item.sheet_name,
-                match.start(),
+                start,
             )
         )
     return suggestions
@@ -668,7 +803,13 @@ def _chinese_to_int(value: str) -> int | None:
 def _trim_candidate(candidate: str) -> str:
     candidate = re.sub(r"^[0-9一二三四五六七八九十百千万两零〇个套项本项目包含范围覆盖共请参阅：:、，,\s]+", "", candidate)
     candidate = re.sub(r"[0-9]+个$", "", candidate)
-    return candidate.strip(" ，,。；;：:")
+    candidate = candidate.strip(" ，,。；;：:")
+
+    for std_name in STANDARD_SUBSYSTEMS:
+        if candidate.endswith(std_name):
+            return std_name
+
+    return candidate
 
 
 def _closest_subsystem(candidate: str) -> str | None:
