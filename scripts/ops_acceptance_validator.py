@@ -49,6 +49,7 @@ STANDARD_SET = set(STANDARD_SUBSYSTEMS)
 PLATFORM_GENERIC_TERMS = {
     "平台",
     "平台系统",
+    "平台子系统",
     "大数据资源平台",
     "数据平台",
     "业务平台",
@@ -76,10 +77,9 @@ PLATFORM_GENERIC_TERMS = {
     "技术中台",
     "中台系统",
     "中台",
-    "基础服务",
-    "公共服务",
-    "通用服务",
-    "支撑服务",
+    "月度系统",
+    "月度子系统",
+    "月度平台",
 }
 
 VENDOR_GROUPS = {
