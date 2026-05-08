@@ -46,6 +46,42 @@ STANDARD_SUBSYSTEMS = [
 ]
 STANDARD_SET = set(STANDARD_SUBSYSTEMS)
 
+PLATFORM_GENERIC_TERMS = {
+    "平台",
+    "平台系统",
+    "大数据资源平台",
+    "数据平台",
+    "业务平台",
+    "支撑平台",
+    "基础设施平台",
+    "基础平台",
+    "通用平台",
+    "综合平台",
+    "管理平台",
+    "监测平台",
+    "监管平台",
+    "共享平台",
+    "交换平台",
+    "服务平",
+    "应用平台",
+    "系统平台",
+    "云平台",
+    "云服务平台",
+    "一体化平台",
+    "统一平台",
+    "公共平台",
+    "开放平台",
+    "数据中台",
+    "业务中台",
+    "技术中台",
+    "中台系统",
+    "中台",
+    "基础服务",
+    "公共服务",
+    "通用服务",
+    "支撑服务",
+}
+
 VENDOR_GROUPS = {
     "南洋": "实施1组",
     "亚信": "实施2组",
@@ -390,6 +426,15 @@ def _check_counts(item: TextItem) -> list[Suggestion]:
     return suggestions
 
 
+def _is_platform_generic(candidate: str) -> bool:
+    if len(candidate) < 4:
+        return True
+    for term in PLATFORM_GENERIC_TERMS:
+        if candidate == term or candidate.endswith(term):
+            return True
+    return False
+
+
 def _check_subsystem_names(item: TextItem) -> list[Suggestion]:
     suggestions: list[Suggestion] = []
     reported: set[str] = set()
@@ -400,6 +445,8 @@ def _check_subsystem_names(item: TextItem) -> list[Suggestion]:
         if candidate in STANDARD_SET or candidate in reported:
             continue
         if candidate in ("子系统", "系统") and re.search(r"[0-9]+个", matched_text):
+            continue
+        if _is_platform_generic(candidate):
             continue
         reported.add(candidate)
         suggestions.append(
