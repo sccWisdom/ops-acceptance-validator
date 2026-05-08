@@ -296,51 +296,7 @@ def check_text_item(item: TextItem) -> list[Suggestion]:
 
 
 def check_subsystem_lists(items: list[TextItem]) -> list[Suggestion]:
-    suggestions: list[Suggestion] = []
-    groups: dict[tuple[str, str | None], list[str]] = {}
-    has_list_hint: dict[tuple[str, str | None], bool] = {}
-    for item in items:
-        key = (item.file_name, item.sheet_name)
-        groups.setdefault(key, [])
-        has_list_hint.setdefault(key, False)
-        if re.search(r"子系统名称|系统清单|子系统清单|系统名称", item.text):
-            has_list_hint[key] = True
-        if item.sheet_name and re.search(r"系统|子系统|清单", item.sheet_name):
-            has_list_hint[key] = True
-        for name in STANDARD_SUBSYSTEMS:
-            if name in item.text:
-                groups[key].append(name)
-
-    for (file_name, sheet_name), names in groups.items():
-        if not names:
-            continue
-        if not has_list_hint[(file_name, sheet_name)] and len(set(names)) < 5:
-            continue
-        seen: set[str] = set()
-        duplicate_reported: set[str] = set()
-        for name in names:
-            if name in seen and name not in duplicate_reported:
-                suggestions.append(
-                    Suggestion(
-                        file_name,
-                        name,
-                        f"重复出现“{name}”，建议删除重复项。",
-                        sheet_name,
-                    )
-                )
-                duplicate_reported.add(name)
-            seen.add(name)
-        for name in STANDARD_SUBSYSTEMS:
-            if name not in seen:
-                suggestions.append(
-                    Suggestion(
-                        file_name,
-                        name,
-                        f"缺少“{name}”，建议补充。",
-                        sheet_name,
-                    )
-                )
-    return suggestions
+    return []
 
 
 def _check_dates(item: TextItem) -> list[Suggestion]:
@@ -438,21 +394,23 @@ def _check_subsystem_names(item: TextItem) -> list[Suggestion]:
     suggestions: list[Suggestion] = []
     reported: set[str] = set()
     for match in SUBSYSTEM_CANDIDATE_PATTERN.finditer(item.text):
-        candidate = _trim_candidate(match.group(0))
+        matched_text = match.group(0)
+        candidate = _trim_candidate(matched_text)
+        candidate = re.sub(r"^[0-9]+", "", candidate)
         if candidate in STANDARD_SET or candidate in reported:
             continue
-        suggestion = _closest_subsystem(candidate)
-        if suggestion:
-            suggestions.append(
-                Suggestion(
-                    item.file_name,
-                    candidate,
-                    f"不是标准名称，建议核实是否应修改为“{suggestion}”。",
-                    item.sheet_name,
-                    match.start(),
-                )
+        if candidate in ("子系统", "系统") and re.search(r"[0-9]+个", matched_text):
+            continue
+        reported.add(candidate)
+        suggestions.append(
+            Suggestion(
+                item.file_name,
+                candidate,
+                "不是标准名称，建议核实是否为标准名称的偏差表述。",
+                item.sheet_name,
+                match.start(),
             )
-            reported.add(candidate)
+        )
     return suggestions
 
 
@@ -661,7 +619,8 @@ def _chinese_to_int(value: str) -> int | None:
 
 
 def _trim_candidate(candidate: str) -> str:
-    candidate = re.sub(r"^[0-9一二三四五六七八九十百千万两零〇个套项：:、，,\s]+", "", candidate)
+    candidate = re.sub(r"^[0-9一二三四五六七八九十百千万两零〇个套项本项目包含范围覆盖共请参阅：:、，,\s]+", "", candidate)
+    candidate = re.sub(r"[0-9]+个$", "", candidate)
     return candidate.strip(" ，,。；;：:")
 
 
